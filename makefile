@@ -4,9 +4,25 @@
 CUBIOMES_SRC := $(addprefix cubiomes/,biomenoise.c biomes.c finders.c generator.c layers.c noise.c)
 
 # -------------------------------
-# Flags
+# Biome size toggle
 # -------------------------------
 LARGE_BIOMES ?= 1
+
+ifeq ($(LARGE_BIOMES),0)
+  BIN_BASENAME := main-sb
+else
+  BIN_BASENAME := main-lb
+endif
+
+ifeq ($(OS),Windows_NT)
+  BIN := $(BIN_BASENAME).exe
+else
+  BIN := $(BIN_BASENAME)
+endif
+
+# -------------------------------
+# Flags
+# -------------------------------
 override CFLAGS   += -O3
 override CXXFLAGS += -O3 -std=c++20 -I asio/asio/include -DOMISSION_LARGE_BIOMES=$(LARGE_BIOMES)
 
@@ -80,9 +96,9 @@ else
     CXXFLAGS += -DNO_NET
 endif
 
-all: main.exe
+all: $(BIN)
 
-main.exe: $(MAIN_OBJ)
+$(BIN): $(MAIN_OBJ)
 	nvcc $(MAIN_OBJ) $(CUBIOMES_SRC) -o $@ $(NVCC_CFLAGS) \
 		-D_WIN32_WINNT=0x0601 $(MAIN_LDFLAGS) $(NVCC_LDFLAGS)
 
@@ -111,9 +127,9 @@ else
     CXXFLAGS += -DNO_NET
 endif
 
-all: main
+all: $(BIN)
 
-main: $(MAIN_OBJ)
+$(BIN): $(MAIN_OBJ)
 	nvcc $(MAIN_OBJ) -o $@ $(NVCC_CFLAGS) $(MAIN_LDFLAGS) $(NVCC_LDFLAGS)
 
 endif
@@ -157,4 +173,4 @@ debug:
 	        NVCC_CFLAGS="--expt-relaxed-constexpr --default-stream per-thread -g -G"
 
 clean:
-	rm -f *.o ./main ./main.exe *.a $(BOINC_STAMP)
+	rm -f *.o ./main ./main.exe ./main-sb ./main-sb.exe ./main-lb ./main-lb.exe *.a $(BOINC_STAMP)
