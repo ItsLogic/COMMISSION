@@ -1,7 +1,7 @@
 CUBIOMES_SRC := $(addprefix cubiomes/,biomenoise.c biomes.c finders.c generator.c layers.c noise.c)
 
 LARGE_BIOMES ?= 0
-UNBOUND ?= 1
+UNBOUND ?= 0
 PRINT_INTERVAL ?= 4096
 ARCH ?= native
 override CFLAGS += -O3
