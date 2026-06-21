@@ -177,7 +177,7 @@ int main_inner(int argc, char **argv) {
     }
 
     const int threads = args.threads.value_or(args.client ? 0 : 1);
-    int32_t min_size = args.min_size.value_or(7'000'000 * (large_biomes ? 16 : 1));
+    int32_t min_size = args.min_size.value_or(6'000'000 * (large_biomes ? 16 : 1));
     if (threads != 0) {
         std::printf("min_size = %" PRIi32 "\n", min_size);
     }

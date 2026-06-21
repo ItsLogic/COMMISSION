@@ -60,7 +60,7 @@ void CpuThread::run() {
 
         const auto end = std::chrono::steady_clock::now();
         double time_total = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() * 1e-9;
-        std::printf("Cpu test took %.3f s\n", time_total);
+        // std::printf("Cpu test took %.3f s\n", time_total);
 
         if (!output) continue;
 

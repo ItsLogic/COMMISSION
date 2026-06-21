@@ -1,147 +1,57 @@
-# -------------------------------
-# Sources
-# -------------------------------
 CUBIOMES_SRC := $(addprefix cubiomes/,biomenoise.c biomes.c finders.c generator.c layers.c noise.c)
 
-# -------------------------------
-# Biome size toggle
-# -------------------------------
 LARGE_BIOMES ?= 1
-
-ifeq ($(LARGE_BIOMES),0)
-  BIN_BASENAME := main-sb
-else
-  BIN_BASENAME := main-lb
-endif
-
-ifeq ($(OS),Windows_NT)
-  BIN := $(BIN_BASENAME).exe
-else
-  BIN := $(BIN_BASENAME)
-endif
-
-# -------------------------------
-# Flags
-# -------------------------------
-override CFLAGS   += -O3
+override CFLAGS += -O3
 override CXXFLAGS += -O3 -std=c++20 -I asio/asio/include -DOMISSION_LARGE_BIOMES=$(LARGE_BIOMES)
+override NVCC_FLAGS += $(CXXFLAGS) --expt-relaxed-constexpr --default-stream per-thread
 
-# MAIN_CXXFLAGS inherits from CXXFLAGS (so we can add BOINC flags separately)
-MAIN_CXXFLAGS := $(CXXFLAGS)
-
-# NVCC compile flags (only for .cu -> .o)
-NVCC_CFLAGS := $(CXXFLAGS) --expt-relaxed-constexpr --default-stream per-thread
-
-# NVCC link flags (only for final link step)
-NVCC_LDFLAGS :=
-
-# -------------------------------
-# BOINC support
-# -------------------------------
-ifdef BOINC
-    BOINC_FLAGS := -Iboinc/ -DBOINC
-    MAIN_LDFLAGS  += -lboinc_api -lboinc
-    NVCC_LDFLAGS  += -lboinc_api -lboinc
-
-    ifeq ($(OS),Windows_NT)
-        BOINC_FLAGS += -Iboinc/win
-        MAIN_LDFLAGS  += -Lboinc/lib/win
-        NVCC_LDFLAGS  += -Lboinc/lib/win
-    else
-        MAIN_LDFLAGS  += -Lboinc/lib/lin
-        NVCC_LDFLAGS  += -Lboinc/lib/lin
-    endif
-
-    CXXFLAGS     += $(BOINC_FLAGS)
-    NVCC_CFLAGS  += $(BOINC_FLAGS)
-    MAIN_CXXFLAGS += $(BOINC_FLAGS)
-endif
-
-# -------------------------------
-# BOINC stamp file (auto rebuild)
-# -------------------------------
-BOINC_STAMP := .boinc_enabled
-
-ifeq ($(BOINC),1)
-BOINC_VALUE := 1
-else
-BOINC_VALUE := 0
-endif
-
-$(BOINC_STAMP):
-	@echo $(BOINC_VALUE) > $(BOINC_STAMP)
-
-%.o: $(BOINC_STAMP)
-
-# -------------------------------
-# Windows build
-# -------------------------------
 ifeq ($(OS),Windows_NT)
+all: main.exe
 
-MAIN_OBJ := main.o
+# nvcc src/*.cpp src/*.c src/*.cu -o main.exe cubiomes/biomenoise.c cubiomes/biomes.c cubiomes/finders.c cubiomes/generator.c cubiomes/layers.c cubiomes/noise.c -arch=native -O3 -std=c++20 -I asio-1.34.2/include -DOMISSION_LARGE_BIOMES=1 --expt-relaxed-constexpr --default-stream per-thread -D_WIN32_WINNT=0x0601
+main.exe: src/*.*
+	nvcc src/*.cpp src/*.c src/*.cu $(CUBIOMES_SRC) -o $@ $(NVCC_FLAGS) -D_WIN32_WINNT=0x0601
+else
+override NVCC_FLAGS += -ccbin $(CXX)
+
+MAIN_SRC := src/main.cpp
+MAIN_DEP := $(MAIN_SRC) src/common.h
 
 ifndef NO_GPU
-    MAIN_OBJ += gpu.o
+	MAIN_SRC += gpu.o
+	MAIN_DEP += gpu.o src/gpu.h
+	MAIN_CXX := nvcc
+	MAIN_CXXFLAGS += $(NVCC_FLAGS)
+else
+	MAIN_CXX := $(CXX)
+	MAIN_CXXFLAGS += $(CXXFLAGS) -DNO_GPU
 endif
 
 ifndef NO_CPU
-    MAIN_OBJ += cpu.o cubiomes.o libcubiomes.a
+	MAIN_SRC += cpu.o cubiomes.o libcubiomes.a
+	MAIN_DEP += cpu.o cubiomes.o libcubiomes.a src/cpu.h
 else
-    CXXFLAGS += -DNO_CPU
+	MAIN_CXXFLAGS += -DNO_CPU
 endif
 
 ifndef NO_NET
-    MAIN_OBJ += client.o server.o
+	MAIN_SRC += client.o server.o
+	MAIN_DEP += client.o server.o src/client.h src/server.h
 else
-    CXXFLAGS += -DNO_NET
+	MAIN_CXXFLAGS += -DNO_NET
 endif
 
-all: $(BIN)
+all: main
 
-$(BIN): $(MAIN_OBJ)
-	nvcc $(MAIN_OBJ) $(CUBIOMES_SRC) -o $@ $(NVCC_CFLAGS) \
-		-D_WIN32_WINNT=0x0601 $(MAIN_LDFLAGS) $(NVCC_LDFLAGS)
+libcubiomes.a:
+	$(CC) -c $(CUBIOMES_SRC) -fwrapv $(CFLAGS)
+	$(AR) rcs libcubiomes.a biomenoise.o biomes.o finders.o generator.o layers.o noise.o
 
-# -------------------------------
-# Linux / Other build
-# -------------------------------
-else
-
-NVCC_CFLAGS += -ccbin $(CXX)
-
-MAIN_OBJ := main.o
-
-ifndef NO_GPU
-    MAIN_OBJ += gpu.o
-endif
-
-ifndef NO_CPU
-    MAIN_OBJ += cpu.o cubiomes.o libcubiomes.a
-else
-    CXXFLAGS += -DNO_CPU
-endif
-
-ifndef NO_NET
-    MAIN_OBJ += client.o server.o
-else
-    CXXFLAGS += -DNO_NET
-endif
-
-all: $(BIN)
-
-$(BIN): $(MAIN_OBJ)
-	nvcc $(MAIN_OBJ) -o $@ $(NVCC_CFLAGS) $(MAIN_LDFLAGS) $(NVCC_LDFLAGS)
-
-endif
-
-# -------------------------------
-# Object build rules (shared)
-# -------------------------------
-main.o: src/main.cpp src/common.h
-	$(CXX) -c $< -o $@ $(MAIN_CXXFLAGS)
+cubiomes.o: src/cubiomes.c src/cubiomes.h
+	$(CC) -c $< -o $@ $(CFLAGS)
 
 gpu.o: src/gpu.cu src/gpu.h src/common.h src/Random.h
-	nvcc -c $< -o $@ $(NVCC_CFLAGS)
+	nvcc -c $< -o $@ $(NVCC_FLAGS)
 
 cpu.o: src/cpu.cpp src/cpu.h src/common.h src/cubiomes.h
 	$(CXX) -c $< -o $@ $(CXXFLAGS)
@@ -152,25 +62,6 @@ client.o: src/client.cpp src/client.h src/common.h
 server.o: src/server.cpp src/server.h src/common.h
 	$(CXX) -c $< -o $@ $(CXXFLAGS)
 
-cubiomes.o: src/cubiomes.c src/cubiomes.h
-	$(CC) -c $< -o $@ $(CFLAGS)
-
-libcubiomes.a:
-	$(CC) -c $(CUBIOMES_SRC) -fwrapv $(CFLAGS)
-	$(AR) rcs libcubiomes.a biomenoise.o biomes.o finders.o generator.o layers.o noise.o
-
-# -------------------------------
-# Convenience targets
-# -------------------------------
-.PHONY: boinc clean debug
-
-boinc:
-	$(MAKE) BOINC=1
-
-debug:
-	$(MAKE) clean
-	$(MAKE) CXXFLAGS="-g -O0 -std=c++20 -I asio/asio/include -DOMISSION_LARGE_BIOMES=$(LARGE_BIOMES)" \
-	        NVCC_CFLAGS="--expt-relaxed-constexpr --default-stream per-thread -g -G"
-
-clean:
-	rm -f *.o ./main ./main.exe ./main-sb ./main-sb.exe ./main-lb ./main-lb.exe *.a $(BOINC_STAMP)
+main: $(MAIN_DEP)
+	$(MAIN_CXX) $(MAIN_SRC) -o $@ $(MAIN_CXXFLAGS)
+endif
